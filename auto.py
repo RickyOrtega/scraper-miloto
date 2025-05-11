@@ -2,8 +2,48 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import json
+import matplotlib.pyplot as plt
 from datetime import datetime
 from collections import Counter
+
+def revisar_json(file_path):
+    """
+    Revisa si el archivo JSON existe y tiene datos válidos.
+
+    Args:
+        file_path (str): Ruta del archivo JSON.
+
+    Returns:
+        bool: True si el archivo es válido, False en caso contrario.
+    """
+    try:
+        with open(file_path, 'r') as file:
+            json_data = json.load(file)
+            
+            return isinstance(json_data, dict) and "sorteos" in json_data
+    except (FileNotFoundError, json.JSONDecodeError):
+        print("El archivo JSON no existe o está corrupto. Creando uno nuevo.")
+        return False
+    
+
+def crear_json_vacio(file_path):
+    """
+    Crea un archivo JSON vacío con la estructura inicial.
+
+    Args:
+        file_path (str): Ruta del archivo JSON.
+    """
+    try:
+        with open(file_path, 'w') as file:
+            json.dump({
+                "cantidadSorteos": 0,
+                "fechaUltimoSorteo": None,
+                "fechaUltimaConsulta": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "sorteos": []
+            }, file, indent=4)
+        print("Archivo JSON creado correctamente.")
+    except Exception as e:
+        print(f"Error al crear el archivo JSON: {e}")
 
 def get_total_sorteos(url):
     """
@@ -141,6 +181,72 @@ def update_json_file(data, file_path):
     except Exception as e:
         print(f"Error al actualizar el archivo JSON: {e}")
 
+def mostrar_dashboard(file_path):
+    """
+    Muestra un dashboard visual con análisis de frecuencias de números sorteados.
+    
+    Args:
+        file_path (str): Ruta del archivo JSON con los sorteos.
+    """
+    try:
+        with open(file_path, 'r') as file:
+            json_data = json.load(file)
+        
+        balotas = []
+        for sorteo in json_data.get("sorteos", []):
+            balotas.extend(sorteo.get("balotas", []))
+
+        if not balotas:
+            print("No hay datos de balotas para analizar.")
+            return
+
+        frecuencia = Counter(balotas)
+
+        # Ordenamos las frecuencias por número
+        numeros = sorted(frecuencia.keys())
+        conteos = [frecuencia[num] for num in numeros]
+
+        # --------- GRÁFICO DE BARRAS ---------
+        # plt.figure(figsize=(12,6))
+        # plt.bar(numeros, conteos)
+        # plt.xlabel('Número de Balota')
+        # plt.ylabel('Frecuencia de aparición')
+        # plt.title('Frecuencia de números en MiLoto')
+        # plt.grid(axis='y', linestyle='--', alpha=0.7)
+        # plt.xticks(numeros)
+        # plt.tight_layout()
+        # plt.show()
+
+        # # --------- HISTOGRAMA ---------
+        # plt.figure(figsize=(12,6))
+        # plt.hist(balotas, bins=range(1, 41), edgecolor='black', align='left')
+        # plt.xlabel('Número de Balota')
+        # plt.ylabel('Cantidad')
+        # plt.title('Distribución de balotas en MiLoto')
+        # plt.grid(axis='y', linestyle='--', alpha=0.7)
+        # plt.xticks(range(1, 40))
+        # plt.tight_layout()
+        # plt.show()
+
+        # --------- TOP 5 MÁS FRECUENTES ---------
+        top_5_mas = frecuencia.most_common(5)
+        print("\n🎯 Top 5 números más frecuentes:")
+        for numero, cantidad in top_5_mas:
+            print(f"  Número {numero}: {cantidad} veces")
+
+        # --------- TOP 5 MENOS FRECUENTES ---------
+        top_5_menos = sorted(frecuencia.items(), key=lambda x: x[1])[:5]
+        print("\n💤 Top 5 números menos frecuentes:")
+        for numero, cantidad in top_5_menos:
+            print(f"  Número {numero}: {cantidad} veces")
+
+    except FileNotFoundError:
+        print("El archivo JSON no existe.")
+    except json.JSONDecodeError:
+        print("Error al leer el archivo JSON.")
+    except Exception as e:
+        print(f"Ocurrió un error: {e}")
+
 def analizar_numeros_frecuentes(file_path):
     """
     Analiza los números más frecuentes en los sorteos almacenados en el archivo JSON.
@@ -176,6 +282,7 @@ def menu():
     print("\nMenú:")
     print("1. Actualizar sorteos.")
     print("2. Analizar números frecuentes.")
+    print("3. Mostrar dashboard de resultados.")
     opcion = input("Seleccione una opción: ")
 
     if opcion == "1":
@@ -221,8 +328,17 @@ def menu():
             probabilidad = (conteo / total_numeros) * 100
             probabilidad_por_juego = (conteo / total_juegos) * 100
             print(f"Número {numero}: {conteo} veces ({probabilidad:.2f}% de probabilidad, {probabilidad_por_juego:.2f}% por sorteo)")
+    
+    elif opcion == "3":
+        json_file = "resultados.json"
+        mostrar_dashboard(json_file)
     else:
         print("Opción no válida.")
 
 if __name__ == "__main__":
+    json_file = "resultados.json"
+
+    if not revisar_json(json_file):
+        crear_json_vacio(json_file)
+
     menu()
