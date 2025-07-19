@@ -145,3 +145,22 @@ def numeros_que_no_han_salido(file_path, ultimos_n=10):
     universo = set(range(1, 39))
     numeros_frios = sorted(universo - numeros_salidos)
     return numeros_frios
+
+def ranking_de_numeros(file_path):
+    frecuencias = dict(Counter([n for jugada in obtener_balotas(file_path) for n in jugada]))
+    co_ocurrencias = co_ocurrencias_del_numero_mas_frecuente(file_path)["coocurrencias"]
+    
+    score = {}
+    for n in range(1, 39):
+        freq = frecuencias.get(n, 0)
+        cooc = sum(v for num, v in co_ocurrencias if num == n)
+        score[n] = freq + (cooc * 0.5)  # ejemplo de ponderación
+
+    return sorted(score.items(), key=lambda x: x[1], reverse=True)
+
+def generar_jugadas_optimas(file_path, cantidad=5):
+    ranking = [num for num, _ in ranking_de_numeros(file_path)]
+    jugadas = []
+    for i in range(cantidad):
+        jugadas.append(sorted(ranking[i*6:(i+1)*6]))
+    return jugadas

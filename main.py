@@ -14,7 +14,8 @@ from analisis import (
     co_ocurrencia_de_numeros,
     numeros_que_no_han_salido,
     co_ocurrencias_del_numero_mas_frecuente,
-)
+    generar_jugadas_optimas
+    )
 
 def menu():
     file_path = "resultados.json"
@@ -24,6 +25,8 @@ def menu():
     print("\nMenú:")
     print("1. Actualizar sorteos.")
     print("2. Analizar números frecuentes.")
+    print("3. Mostrar dashboard.")
+    print("4. Salir.")
     opcion = input("Seleccione una opción: ")
 
     if opcion == "1":
@@ -70,6 +73,7 @@ def menu():
         print("11. Co-ocurrencia de números (números que suelen salir juntos)")
         print("12. Números que no han salido en los últimos sorteos")
         print("13. Números que más co-ocurren con el número más frecuente")
+        print("14. Generar jugadas óptimas")
         sub_opcion = input("Seleccione una opción: ")
 
         if sub_opcion == "1":
@@ -129,9 +133,24 @@ def menu():
             print("Co-ocurre más frecuentemente con:")
             for num, veces in resultado["coocurrencias"]:
                 print(f"  - Número {num}: {veces} veces")
-
+        elif sub_opcion == "14":
+            try:
+                jugadas = int(input("¿Cuántas jugadas óptimas deseas generar?: "))
+            except ValueError:
+                print("Número inválido.")
+                return
+            jugadas_optimas = generar_jugadas_optimas(file_path, jugadas)
+            print(f"\nJugadas óptimas generadas:")
+            for jugada in jugadas_optimas:
+                print(jugada)
         else:
             print("Opción no válida.")
+    elif opcion == "3":
+        from dashboard import mostrar_dashboard
+        mostrar_dashboard(file_path)
+    elif opcion == "4":
+        print("Saliendo del programa...")
+        return
 
 if __name__ == "__main__":
     file_path = "resultados.json"
