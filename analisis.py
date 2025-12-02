@@ -2,6 +2,7 @@ from collections import Counter
 from collections import defaultdict
 from itertools import combinations
 from utils import cargar_json
+import random
 
 def co_ocurrencia_de_numeros(file_path):
     data = cargar_json(file_path)
@@ -148,13 +149,18 @@ def numeros_que_no_han_salido(file_path, ultimos_n=10):
 
 def ranking_de_numeros(file_path):
     frecuencias = dict(Counter([n for jugada in obtener_balotas(file_path) for n in jugada]))
-    co_ocurrencias = co_ocurrencias_del_numero_mas_frecuente(file_path)["coocurrencias"]
+    co_ocurrencias_generales = co_ocurrencia_de_numeros(file_path)
     
     score = {}
-    for n in range(1, 39):
-        freq = frecuencias.get(n, 0)
-        cooc = sum(v for num, v in co_ocurrencias if num == n)
-        score[n] = freq + (cooc * 0.5)  # ejemplo de ponderación
+    for n in range(1, 40): # El rango va hasta el 39, así que revisa si el universo es 39 o 40
+            freq = frecuencias.get(n, 0)
+
+            # Sumar la frecuencia de co-ocurrencia con TODOS sus compañeros comunes
+            cooc = sum(v for num, v in co_ocurrencias_generales.get(n, []))
+
+            # Puedes añadir el factor de retardo aquí si lo implementas (números que no han salido últimamente)
+
+            score[n] = (freq * 1.0) + (cooc * 0.2) # Ajustar pesos para darle más peso a la frecuencia individual (1.0) que a la co-ocurrencia (0.2).
 
     return sorted(score.items(), key=lambda x: x[1], reverse=True)
 
@@ -162,5 +168,34 @@ def generar_jugadas_optimas(file_path, cantidad=5):
     ranking = [num for num, _ in ranking_de_numeros(file_path)]
     jugadas = []
     for i in range(cantidad):
-        jugadas.append(sorted(ranking[i*6:(i+1)*6]))
+        jugadas.append(sorted(ranking[i*5:(i+1)*5]))
+    return jugadas
+
+def generar_jugadas_optimas_v2(file_path, cantidad=5):
+    ranking = [num for num, _ in ranking_de_numeros(file_path)]
+    
+    # Dividir el ranking en zonas para la selección estratificada
+    top_calientes = ranking[:10]
+    medio = ranking[10:-10]
+    bottom_frios = ranking[-10:]
+
+    jugadas = []
+    for _ in range(cantidad):
+        jugada = set()
+        
+        # 2 Calientes (Top 10)
+        jugada.update(random.sample(top_calientes, 2))
+        
+        # 2 Medios
+        jugada.update(random.sample(medio, 2))
+        
+        # 1 Frío (Bottom 10)
+        jugada.add(random.choice(bottom_frios))
+        
+        # En caso de que se repita un número (casi imposible), ajustamos.
+        while len(jugada) < 5:
+            jugada.add(random.choice(ranking))
+
+        jugadas.append(sorted(list(jugada)))
+        
     return jugadas

@@ -14,7 +14,8 @@ from analisis import (
     co_ocurrencia_de_numeros,
     numeros_que_no_han_salido,
     co_ocurrencias_del_numero_mas_frecuente,
-    generar_jugadas_optimas
+    generar_jugadas_optimas,
+    generar_jugadas_optimas_v2
     )
 
 def menu():
@@ -139,7 +140,7 @@ def menu():
             except ValueError:
                 print("Número inválido.")
                 return
-            jugadas_optimas = generar_jugadas_optimas(file_path, jugadas)
+            jugadas_optimas = generar_jugadas_optimas_v2(file_path, jugadas)
             print(f"\nJugadas óptimas generadas:")
             for jugada in jugadas_optimas:
                 print(jugada)
