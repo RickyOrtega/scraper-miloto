@@ -143,7 +143,7 @@ def numeros_que_no_han_salido(file_path, ultimos_n=10):
     for sorteo in recientes:
         numeros_salidos.update(sorteo.get("balotas", []))
 
-    universo = set(range(1, 39))
+    universo = set(range(1, 40))
     numeros_frios = sorted(universo - numeros_salidos)
     return numeros_frios
 
@@ -152,16 +152,27 @@ def ranking_de_numeros(file_path):
     co_ocurrencias_generales = co_ocurrencia_de_numeros(file_path)
     
     score = {}
-    for n in range(1, 40): # El rango va hasta el 39, así que revisa si el universo es 39 o 40
+    for n in range(1, 40):
             freq = frecuencias.get(n, 0)
 
-            # Sumar la frecuencia de co-ocurrencia con TODOS sus compañeros comunes
             cooc = sum(v for num, v in co_ocurrencias_generales.get(n, []))
 
-            # Puedes añadir el factor de retardo aquí si lo implementas (números que no han salido últimamente)
+            score[n] = (freq * 1.0) + (cooc * 0.2)
 
-            score[n] = (freq * 1.0) + (cooc * 0.2) # Ajustar pesos para darle más peso a la frecuencia individual (1.0) que a la co-ocurrencia (0.2).
+    return sorted(score.items(), key=lambda x: x[1], reverse=True)
 
+def ranking_de_numeros_correlacion_prioritaria(file_path):
+    frecuencias = dict(Counter([n for jugada in obtener_balotas(file_path) for n in jugada]))
+    cooc_puntero_data = co_ocurrencias_del_numero_mas_frecuente(file_path)
+    cooc_puntero = dict(cooc_puntero_data["coocurrencias"])
+    
+    score = {}
+    for n in range(1, 40):
+        freq = frecuencias.get(n, 0)
+        
+        score_cooc_puntero = cooc_puntero.get(n, 0) 
+        score[n] = (freq * 1.0) + (score_cooc_puntero * 0.5)
+    
     return sorted(score.items(), key=lambda x: x[1], reverse=True)
 
 def generar_jugadas_optimas(file_path, cantidad=5):
@@ -172,9 +183,8 @@ def generar_jugadas_optimas(file_path, cantidad=5):
     return jugadas
 
 def generar_jugadas_optimas_v2(file_path, cantidad=5):
-    ranking = [num for num, _ in ranking_de_numeros(file_path)]
-    
-    # Dividir el ranking en zonas para la selección estratificada
+    ranking = [num for num, _ in ranking_de_numeros_correlacion_prioritaria(file_path)]
+
     top_calientes = ranking[:10]
     medio = ranking[10:-10]
     bottom_frios = ranking[-10:]
@@ -199,3 +209,127 @@ def generar_jugadas_optimas_v2(file_path, cantidad=5):
         jugadas.append(sorted(list(jugada)))
         
     return jugadas
+
+def generar_jugadas_por_patrones(file_path, cantidad=5):
+    """
+    Genera jugadas tomando los Pares y Tripletas más comunes y 
+    completando la jugada con números fríos para el balance.
+    """
+    
+    ranking = [num for num, _ in ranking_de_numeros_correlacion_prioritaria(file_path)]
+    
+    # Obtener patrones calientes
+    top_pares = [list(p[0]) for p in pares_mas_comunes(file_path)]
+    top_tripletas = [list(t[0]) for t in tripletas_mas_comunes(file_path)]
+    
+    # Obtener números fríos (los menos rankeados o que no han salido)
+    frios_del_ranking = ranking[-10:] # Los 10 números menos probables según el ranking
+    
+    jugadas = []
+    
+    for i in range(cantidad):
+        jugada = set()
+        
+        if i % 2 == 0 and top_tripletas:
+            tripleta = top_tripletas[i % len(top_tripletas)]
+            jugada.update(tripleta)
+            
+            complemento = random.sample(frios_del_ranking, min(2, len(frios_del_ranking)))
+            jugada.update(complemento)
+            
+        elif top_pares:
+            par = top_pares[i % len(top_pares)]
+            jugada.update(par)
+            
+            media_fria = ranking[15:]
+            complemento = random.sample(media_fria, min(3, len(media_fria)))
+            jugada.update(complemento)
+            
+        while len(jugada) < 5:
+            jugada.add(random.choice(ranking)) 
+
+        jugada = {n for n in jugada if 1 <= n <= 39}
+        while len(jugada) < 5:
+            jugada.add(random.randint(1, 39))
+
+        jugadas.append(sorted(list(jugada)))
+        
+    return jugadas
+
+def generar_jugadas_por_patrones_determinista(file_path, cantidad=5):
+    """
+    Genera jugadas de forma determinista tomando los Pares y Tripletas más comunes y
+    completando la jugada con números rankeados, eliminando el componente aleatorio.
+    """
+
+    # 1. Obtener datos de ranking y patrones (Determinista)
+    ranking = [num for num, _ in ranking_de_numeros_correlacion_prioritaria(file_path)]
+    top_pares = [list(p[0]) for p in pares_mas_comunes(file_path)]
+    top_tripletas = [list(t[0]) for t in tripletas_mas_comunes(file_path)]
+
+    # Categorías del Ranking (Determinista)
+    # Calientes (Top 10), Frios (Bottom 10)
+    top_calientes = ranking[:10]
+    frios_del_ranking = ranking[-10:]
+
+    jugadas = []
+
+    for i in range(cantidad):
+        jugada = set()
+
+        # Usamos los patrones más comunes de forma secuencial
+        idx_tripleta = i % len(top_tripletas) if top_tripletas else -1
+        idx_par = i % len(top_pares) if top_pares else -1
+
+        # Lógica de construcción
+        if i % 2 == 0 and top_tripletas:
+            # Opción A: Usar una tripleta común
+            tripleta = top_tripletas[idx_tripleta]
+            jugada.update(tripleta)
+
+            # Complemento: 2 números del ranking más alto (no incluidos)
+            complemento_candidatos = [n for n in ranking if n not in jugada]
+            # Seleccionamos los 2 mejores rankeados de los que quedan
+            complemento = sorted(complemento_candidatos, key=lambda n: ranking.index(n))[:2]
+            jugada.update(complemento)
+
+        elif top_pares:
+            # Opción B: Usar un par común
+            par = top_pares[idx_par]
+            jugada.update(par)
+
+            # Complemento: 3 números del ranking que no estén ya en la jugada
+            complemento_candidatos = [n for n in ranking if n not in jugada]
+            # Seleccionamos los 3 mejores rankeados de los que quedan
+            complemento = sorted(complemento_candidatos, key=lambda n: ranking.index(n))[:3]
+            jugada.update(complemento)
+
+        # Llenado determinista si la jugada no tiene 5 números (Debería ser raro, pero es un seguro)
+        while len(jugada) < 5:
+            # Usa los números del ranking que no están en la jugada, priorizando los más calientes
+            for num in ranking:
+                if num not in jugada:
+                    jugada.add(num)
+                    if len(jugada) == 5:
+                        break
+        
+        # Filtrar por el rango de balotas si aplica (1 a 39)
+        jugada = {n for n in jugada if 1 <= n <= 39}
+
+        # Asegurar 5 números, usando los mejores del ranking que falten.
+        if len(jugada) < 5:
+             # Usamos el ranking para rellenar
+             relleno_candidatos = [n for n in ranking if n not in jugada]
+             jugada.update(relleno_candidatos[:5 - len(jugada)])
+             
+             # Si aún faltan (ej. ranking pequeño), rellenar con el universo
+             if len(jugada) < 5:
+                  universo_completo = set(range(1, 40))
+                  jugada.update(universo_completo - jugada)
+                  jugada = set(list(jugada)[:5])
+
+
+        jugadas.append(sorted(list(jugada)))
+
+    return jugadas
+
