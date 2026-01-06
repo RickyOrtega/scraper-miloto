@@ -21,8 +21,8 @@ from analisis import (
 
 def menu():
     file_path = "resultados.json"
+    url_main = "https://baloto.com/miloto/resultados/"
     url_base = "https://baloto.com/miloto/resultados-miloto/"
-    url_main = "https://baloto.com/miloto/resultados"
 
     print("\nMenú:")
     print("1. Actualizar sorteos.")
@@ -53,7 +53,7 @@ def menu():
 
         for i in faltantes:
             print(f"Descargando sorteo #{i}...")
-            sorteo = get_sorteo_data(f"{url_base}{i}")
+            sorteo = get_sorteo_data(f"{url_base}{i}/")
             if sorteo:
                 update_json_file(sorteo, file_path)
                 print(f"Sorteo #{i} guardado.")
