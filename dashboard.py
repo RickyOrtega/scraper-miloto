@@ -163,7 +163,7 @@ for seccion_idx, (clave, meta) in enumerate(SECCIONES.items()):
         frame_seccion.grid_columnconfigure(col, weight=1)
 
     data_filtrada = meta["filtro"](sorteos)
-    
+
     # Gráficas estándar
     for idx, generar in enumerate(GRAFICAS):
         fila = (idx // 3) + (1 if clave == "historial_total" else 0)
@@ -178,7 +178,6 @@ for seccion_idx, (clave, meta) in enumerate(SECCIONES.items()):
         canvas.draw()
         widget = canvas.get_tk_widget()
         widget.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="nsew")
-
 
 
 root.mainloop()

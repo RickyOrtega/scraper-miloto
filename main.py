@@ -17,6 +17,7 @@ from analisis import (
     generar_jugadas_optimas,
     generar_jugadas_optimas_v2,
     generar_jugadas_por_patrones_determinista,
+    generar_ticket_estrategia_15,
     )
 
 def menu():
@@ -76,6 +77,7 @@ def menu():
         print("12. Números que no han salido en los últimos sorteos")
         print("13. Números que más co-ocurren con el número más frecuente")
         print("14. Generar jugadas óptimas")
+        print("15. Generar 1 ticket (Estrategia 15)")
         sub_opcion = input("Seleccione una opción: ")
 
         if sub_opcion == "1":
@@ -145,6 +147,10 @@ def menu():
             print(f"\nJugadas óptimas generadas:")
             for jugada in jugadas_optimas:
                 print(jugada)
+        elif sub_opcion == "15":
+            ticket = generar_ticket_estrategia_15(file_path)
+            print("\nTicket (Estrategia 15):")
+            print(ticket)
         else:
             print("Opción no válida.")
     elif opcion == "3":

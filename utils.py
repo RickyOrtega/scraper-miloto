@@ -1,4 +1,5 @@
 import json
+import hashlib
 from datetime import datetime
 
 def revisar_json(file_path):
@@ -25,3 +26,9 @@ def cargar_json(file_path):
 def guardar_json(data, file_path):
     with open(file_path, 'w') as file:
         json.dump(data, file, indent=4)
+
+def seed_por_archivo(file_path):
+    with open(file_path, "rb") as f:
+        h = hashlib.sha256(f.read()).hexdigest()
+    # convertir parte del hash en int para seed
+    return int(h[:8], 16)
