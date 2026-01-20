@@ -7,6 +7,13 @@ import matplotlib.pyplot as plt
 import math
 import random
 
+def tiene_consecutivos(nums) -> bool:
+    s = set(nums)
+    return any((n + 1) in s for n in s)
+
+def suma_cerca_de_objetivo(nums, objetivo=100, tolerancia=10) -> bool:
+    return abs(sum(nums) - objetivo) <= tolerancia
+
 def co_ocurrencia_de_numeros(file_path):
     data = cargar_json(file_path)
     sorteos = data.get("sorteos", [])
@@ -466,16 +473,18 @@ def generar_ticket_estrategia_15_old(file_path):
     pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
     return sorted(impares + pares)
 
-def generar_ticket_estrategia_15_new(file_path):
+def generar_ticket_estrategia_15_new(file_path, suma_objetivo=100, tolerancia=10):
     """
-    Estrategia #15 (1 ticket) - refinada sin sobre-ingeniería:
+    Estrategia #15 (1 ticket) - refinada:
     - semilla de top calientes (preferir impar)
     - 2 cooc ponderados por frecuencia (no siempre los 2 primeros)
     - completar con ranking (peso suave)
+
     Reglas:
     - Dura: 3 impares + 2 pares
     - Suave: >=2 rangos (1-13, 14-26, 27-39)
-    - Suave: suma en percentiles p10-p90 del histórico (campana)
+    - Dura (nueva): NO consecutivos (x y x+1)
+    - Dura (nueva): suma cerca de suma_objetivo (|sum-objetivo|<=tolerancia)
     """
     rng = random.Random(seed_por_archivo(file_path) + 15)
 
@@ -484,7 +493,6 @@ def generar_ticket_estrategia_15_new(file_path):
     top_calientes = ranking[:10]
 
     cooc_top5 = co_ocurrencia_de_numeros(file_path)  # {n: [(comp, veces), ...]}
-    sum_range = _percentiles_suma(file_path, 10, 90)  # (p10, p90) o None
 
     def rango_bucket(n: int) -> int:
         if n <= 13: return 0
@@ -498,14 +506,12 @@ def generar_ticket_estrategia_15_new(file_path):
         return len({rango_bucket(x) for x in nums}) >= 2
 
     def suma_ok(nums) -> bool:
-        if not sum_range:
-            return True
-        p10, p90 = sum_range
-        s = sum(nums)
-        return p10 <= s <= p90
+        return suma_cerca_de_objetivo(nums, objetivo=suma_objetivo, tolerancia=tolerancia)
+
+    def no_consecutivos_ok(nums) -> bool:
+        return not tiene_consecutivos(nums)
 
     def cooc_seed(candidatos) -> int:
-        # robusto: si no hay candidatos, fallback
         if not candidatos:
             return ranking[0] if ranking else rng.randint(1, 39)
 
@@ -522,7 +528,6 @@ def generar_ticket_estrategia_15_new(file_path):
         return otros if otros else candidatos
 
     def weighted_pick(candidatos):
-        # peso suave (menos repetitivo)
         pesos = [1 / math.sqrt(1 + ranking_pos.get(n, 999)) for n in candidatos]
         return rng.choices(candidatos, weights=pesos, k=1)[0]
 
@@ -544,15 +549,28 @@ def generar_ticket_estrategia_15_new(file_path):
         if len(jugada) >= 3:
             candidatos = candidatos_otro_rango(jugada, candidatos)
 
+        # 🚫 filtro anti-consecutivos mientras construye (para no cagarla al final)
+        candidatos = [n for n in candidatos if (n - 1) not in jugada and (n + 1) not in jugada]
+        if not candidatos:
+            return None
+
         return weighted_pick(candidatos)
 
     # fallback si ranking vacío
     if not ranking:
+        for _ in range(15000):
+            impares = rng.sample([n for n in range(1, 40) if n % 2 == 1], 3)
+            pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
+            jug = sorted(impares + pares)
+            if rangos_ok(jug) and no_consecutivos_ok(jug) and suma_ok(jug):
+                return jug
+        # último último
         impares = rng.sample([n for n in range(1, 40) if n % 2 == 1], 3)
         pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
         return sorted(impares + pares)
 
-    for _ in range(700):  # + intentos porque ahora hay filtro suave de suma
+    # más intentos porque ahora hay 2 reglas duras extra
+    for _ in range(15000):
         jugada = set()
 
         # semilla preferir impar
@@ -560,11 +578,11 @@ def generar_ticket_estrategia_15_new(file_path):
         semilla = cooc_seed(top_impares or top_calientes)
         jugada.add(semilla)
 
-        # agregar hasta 2 cooc, ponderados por frecuencia
+        # agregar hasta 2 cooc, ponderados por frecuencia, evitando consecutivos
         comps_raw = [(c, v) for c, v in cooc_top5.get(semilla, []) if 1 <= c <= 39 and c != semilla]
         if comps_raw:
-            comps = [c for c, _ in comps_raw if c not in jugada]
-            weights = [v for c, v in comps_raw if c not in jugada]
+            comps = [c for c, _ in comps_raw if c not in jugada and (c - 1) not in jugada and (c + 1) not in jugada]
+            weights = [v for c, v in comps_raw if c not in jugada and (c - 1) not in jugada and (c + 1) not in jugada]
 
             while len(jugada) < 3 and comps:
                 c = rng.choices(comps, weights=weights, k=1)[0]
@@ -575,7 +593,6 @@ def generar_ticket_estrategia_15_new(file_path):
                 if imp <= 3 and par <= 2:
                     jugada.add(c)
 
-                # remover para no repetir
                 idx = comps.index(c)
                 comps.pop(idx)
                 weights.pop(idx)
@@ -595,10 +612,25 @@ def generar_ticket_estrategia_15_new(file_path):
             continue
 
         jugada = sorted(jugada)
-        if paridad_ok(jugada) and rangos_ok(jugada) and suma_ok(jugada):
+
+        # ✅ filtros finales
+        if (
+            paridad_ok(jugada)
+            and rangos_ok(jugada)
+            and no_consecutivos_ok(jugada)
+            and suma_ok(jugada)
+        ):
             return jugada
 
-    # fallback final
+    # fallback final: intenta cumplir reglas
+    for _ in range(5000):
+        impares = rng.sample([n for n in range(1, 40) if n % 2 == 1], 3)
+        pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
+        jug = sorted(impares + pares)
+        if rangos_ok(jug) and no_consecutivos_ok(jug) and suma_ok(jug):
+            return jug
+
+    # ya si no, lo que sea (rarísimo)
     impares = rng.sample([n for n in range(1, 40) if n % 2 == 1], 3)
     pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
     return sorted(impares + pares)
