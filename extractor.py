@@ -14,7 +14,6 @@ def get_total_sorteos(url):
 def get_sorteo_data(url):
     soup = BeautifulSoup(requests.get(url).content, 'html.parser')
     all_strongs = soup.find_all('strong')
-    print(all_strongs)
     num = int(re.search(r'\d+', soup.find('strong', string=re.compile(r'^SORTEO #\d+$')).text).group())
     fecha = soup.find('div', class_='fs-5').text.strip()
     dia = soup.find('div', class_='fs-2').text.strip()

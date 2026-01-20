@@ -2,6 +2,9 @@ from collections import Counter
 from collections import defaultdict
 from itertools import combinations
 from utils import cargar_json, seed_por_archivo
+import numpy as np
+import matplotlib.pyplot as plt
+import math
 import random
 
 def co_ocurrencia_de_numeros(file_path):
@@ -23,9 +26,6 @@ def co_ocurrencia_de_numeros(file_path):
         resultado[numero] = ordenado[:5]  # Top 5 compañeros - OJO: no precisamente deben ser las más comunes en general
 
     return resultado
-
-from collections import Counter, defaultdict
-from utils import cargar_json
 
 def co_ocurrencias_del_numero_mas_frecuente(file_path):
     data = cargar_json(file_path)
@@ -334,7 +334,16 @@ def generar_jugadas_por_patrones_determinista(file_path, cantidad=5):
 
     return jugadas
 
-def generar_ticket_estrategia_15(file_path):
+
+def _percentiles_suma(file_path, lo=10, hi=90):
+    juegos = obtener_balotas(file_path)
+    if not juegos:
+        return None
+    sums = np.array([sum(j) for j in juegos])
+    p_lo, p_hi = np.percentile(sums, [lo, hi])
+    return float(p_lo), float(p_hi)
+
+def generar_ticket_estrategia_15_old(file_path):
     """
     Estrategia #15 (1 ticket):
     - 1 semilla de los top calientes del ranking correlación-prioritaria
@@ -456,3 +465,144 @@ def generar_ticket_estrategia_15(file_path):
     impares = rng.sample([n for n in range(1, 40) if n % 2 == 1], 3)
     pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
     return sorted(impares + pares)
+
+def generar_ticket_estrategia_15_new(file_path):
+    """
+    Estrategia #15 (1 ticket) - refinada sin sobre-ingeniería:
+    - semilla de top calientes (preferir impar)
+    - 2 cooc ponderados por frecuencia (no siempre los 2 primeros)
+    - completar con ranking (peso suave)
+    Reglas:
+    - Dura: 3 impares + 2 pares
+    - Suave: >=2 rangos (1-13, 14-26, 27-39)
+    - Suave: suma en percentiles p10-p90 del histórico (campana)
+    """
+    rng = random.Random(seed_por_archivo(file_path) + 15)
+
+    ranking = [num for num, _ in ranking_de_numeros_correlacion_prioritaria(file_path)]
+    ranking_pos = {n: i for i, n in enumerate(ranking)}
+    top_calientes = ranking[:10]
+
+    cooc_top5 = co_ocurrencia_de_numeros(file_path)  # {n: [(comp, veces), ...]}
+    sum_range = _percentiles_suma(file_path, 10, 90)  # (p10, p90) o None
+
+    def rango_bucket(n: int) -> int:
+        if n <= 13: return 0
+        if n <= 26: return 1
+        return 2
+
+    def paridad_ok(nums) -> bool:
+        return sum(1 for x in nums if x % 2 == 1) == 3
+
+    def rangos_ok(nums) -> bool:
+        return len({rango_bucket(x) for x in nums}) >= 2
+
+    def suma_ok(nums) -> bool:
+        if not sum_range:
+            return True
+        p10, p90 = sum_range
+        s = sum(nums)
+        return p10 <= s <= p90
+
+    def cooc_seed(candidatos) -> int:
+        # robusto: si no hay candidatos, fallback
+        if not candidatos:
+            return ranking[0] if ranking else rng.randint(1, 39)
+
+        def score(n):
+            return sum(v for _, v in cooc_top5.get(n, [])[:5])
+        return max(candidatos, key=score)
+
+    def candidatos_otro_rango(jugada, candidatos):
+        buckets = {rango_bucket(x) for x in jugada}
+        if len(buckets) >= 2:
+            return candidatos
+        bucket_actual = next(iter(buckets))
+        otros = [n for n in candidatos if rango_bucket(n) != bucket_actual]
+        return otros if otros else candidatos
+
+    def weighted_pick(candidatos):
+        # peso suave (menos repetitivo)
+        pesos = [1 / math.sqrt(1 + ranking_pos.get(n, 999)) for n in candidatos]
+        return rng.choices(candidatos, weights=pesos, k=1)[0]
+
+    def elegir_candidato(candidatos, jugada):
+        impares_actual = sum(1 for x in jugada if x % 2 == 1)
+        pares_actual = len(jugada) - impares_actual
+
+        impares_necesarios = 3 - impares_actual
+        pares_necesarios = 2 - pares_actual
+
+        if impares_necesarios <= 0 and pares_necesarios > 0:
+            candidatos = [n for n in candidatos if n % 2 == 0]
+        elif pares_necesarios <= 0 and impares_necesarios > 0:
+            candidatos = [n for n in candidatos if n % 2 == 1]
+
+        if not candidatos:
+            return None
+
+        if len(jugada) >= 3:
+            candidatos = candidatos_otro_rango(jugada, candidatos)
+
+        return weighted_pick(candidatos)
+
+    # fallback si ranking vacío
+    if not ranking:
+        impares = rng.sample([n for n in range(1, 40) if n % 2 == 1], 3)
+        pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
+        return sorted(impares + pares)
+
+    for _ in range(700):  # + intentos porque ahora hay filtro suave de suma
+        jugada = set()
+
+        # semilla preferir impar
+        top_impares = [n for n in top_calientes if n % 2 == 1]
+        semilla = cooc_seed(top_impares or top_calientes)
+        jugada.add(semilla)
+
+        # agregar hasta 2 cooc, ponderados por frecuencia
+        comps_raw = [(c, v) for c, v in cooc_top5.get(semilla, []) if 1 <= c <= 39 and c != semilla]
+        if comps_raw:
+            comps = [c for c, _ in comps_raw if c not in jugada]
+            weights = [v for c, v in comps_raw if c not in jugada]
+
+            while len(jugada) < 3 and comps:
+                c = rng.choices(comps, weights=weights, k=1)[0]
+
+                tmp = jugada | {c}
+                imp = sum(1 for x in tmp if x % 2 == 1)
+                par = len(tmp) - imp
+                if imp <= 3 and par <= 2:
+                    jugada.add(c)
+
+                # remover para no repetir
+                idx = comps.index(c)
+                comps.pop(idx)
+                weights.pop(idx)
+
+        # completar hasta 5 con ranking y luego universo
+        while len(jugada) < 5:
+            candidatos = [n for n in ranking[:30] if n not in jugada] \
+                         or [n for n in ranking if n not in jugada] \
+                         or [n for n in range(1, 40) if n not in jugada]
+
+            cand = elegir_candidato(candidatos, jugada)
+            if cand is None:
+                break
+            jugada.add(cand)
+
+        if len(jugada) != 5:
+            continue
+
+        jugada = sorted(jugada)
+        if paridad_ok(jugada) and rangos_ok(jugada) and suma_ok(jugada):
+            return jugada
+
+    # fallback final
+    impares = rng.sample([n for n in range(1, 40) if n % 2 == 1], 3)
+    pares = rng.sample([n for n in range(1, 40) if n % 2 == 0], 2)
+    return sorted(impares + pares)
+
+def generar_ticket_estrategia_15(file_path):
+    print("Jugada 15 OLD: ", generar_ticket_estrategia_15_old(file_path))
+    print("Jugada 15 NEW: ", generar_ticket_estrategia_15_new(file_path))
